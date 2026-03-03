@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="planarity icon">
+  <rect x="0" y="0" width="1024" height="1024" rx="220" fill="#0f1319"/>
+
+  <!-- edges -->
+  <g stroke="#f4f4f5" stroke-opacity="0.26" stroke-width="18" stroke-linecap="round">
+    <line x1="512" y1="194" x2="816" y2="414" />
+    <line x1="816" y1="414" x2="700" y2="772" />
+    <line x1="700" y1="772" x2="324" y2="772" />
+    <line x1="324" y1="772" x2="208" y2="414" />
+    <line x1="208" y1="414" x2="512" y2="194" />
+    <line x1="512" y1="194" x2="700" y2="772" />
+    <line x1="816" y1="414" x2="324" y2="772" />
+  </g>
+
+  <!-- glow rings -->
+  <g fill="#f4f4f5" fill-opacity="0.08">
+    <circle cx="512" cy="194" r="86" />
+    <circle cx="816" cy="414" r="86" />
+    <circle cx="700" cy="772" r="86" />
+    <circle cx="324" cy="772" r="86" />
+    <circle cx="208" cy="414" r="86" />
+  </g>
+
+  <!-- nodes -->
+  <g fill="#f4f4f5" fill-opacity="0.94">
+    <circle cx="512" cy="194" r="52" />
+    <circle cx="816" cy="414" r="52" />
+    <circle cx="700" cy="772" r="52" />
+    <circle cx="324" cy="772" r="52" />
+    <circle cx="208" cy="414" r="52" />
+  </g>
+</svg>
