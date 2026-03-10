@@ -598,11 +598,16 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
     final isWide = MediaQuery.of(context).size.width >= 900;
     final buttonLabel = switch (_status) {
       DailyPlayStatus.ready => 'start',
-      DailyPlayStatus.inProgress => 'continue - $_score',
-      DailyPlayStatus.locked => 'locked - $_score',
+      DailyPlayStatus.inProgress => 'continue',
+      DailyPlayStatus.locked => 'locked',
+    };
+    final scoreLabel = switch (_status) {
+      DailyPlayStatus.ready => null,
+      DailyPlayStatus.inProgress || DailyPlayStatus.locked => '$_score',
     };
     final homeContent = _HomeHeroContent(
       buttonLabel: buttonLabel,
+      scoreLabel: scoreLabel,
       isLocked: isLocked,
       onPlayPressed: _openChallenge,
       showLeaderboardBelowButton: !isWide,
@@ -680,6 +685,7 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
 class _HomeHeroContent extends StatelessWidget {
   const _HomeHeroContent({
     required this.buttonLabel,
+    required this.scoreLabel,
     required this.isLocked,
     required this.onPlayPressed,
     required this.showLeaderboardBelowButton,
@@ -689,6 +695,7 @@ class _HomeHeroContent extends StatelessWidget {
   });
 
   final String buttonLabel;
+  final String? scoreLabel;
   final bool isLocked;
   final VoidCallback onPlayPressed;
   final bool showLeaderboardBelowButton;
@@ -721,7 +728,18 @@ class _HomeHeroContent extends StatelessWidget {
                 fontWeight: FontWeight.w400,
               ),
         ),
-        const SizedBox(height: 42),
+        if (scoreLabel != null) ...[
+          const SizedBox(height: 21),
+          Text(
+            scoreLabel!,
+            style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+          ),
+          const SizedBox(height: 21),
+        ] else ...[
+          const SizedBox(height: 42),
+        ],
         OutlinedButton(
           onPressed: isLocked ? null : onPlayPressed,
           style: ButtonStyle(
