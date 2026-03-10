@@ -382,7 +382,7 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
 
         Widget socialButton({required IconData icon}) {
           return OutlinedButton(
-            onPressed: () {},
+            onPressed: null,
             style: OutlinedButton.styleFrom(
               minimumSize: const Size(44, 44),
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -409,7 +409,7 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        actionLabel,
+                        'coming soon - $actionLabel',
                         style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 8),
@@ -422,6 +422,7 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
                       const SizedBox(height: 14),
                       TextField(
                         controller: emailController,
+                        enabled: false,
                         keyboardType: TextInputType.emailAddress,
                         decoration: const InputDecoration(
                           labelText: 'email',
@@ -431,6 +432,7 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
                       const SizedBox(height: 10),
                       TextField(
                         controller: passwordController,
+                        enabled: false,
                         obscureText: true,
                         decoration: const InputDecoration(
                           labelText: 'password',
@@ -450,35 +452,7 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton(
-                          onPressed: isSubmitting
-                              ? null
-                              : () async {
-                                  setDialogState(() {
-                                    isSubmitting = true;
-                                    errorText = null;
-                                  });
-                                  final error = await _submitAuth(
-                                    isSignIn: isSignIn,
-                                    email: emailController.text,
-                                    password: passwordController.text,
-                                  );
-                                  if (!mounted) {
-                                    return;
-                                  }
-                                  if (error != null) {
-                                    setDialogState(() {
-                                      isSubmitting = false;
-                                      errorText = error;
-                                    });
-                                    return;
-                                  }
-                                  Navigator.of(context).pop();
-                                  ScaffoldMessenger.of(this.context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(isSignIn ? 'signed in' : 'account created'),
-                                    ),
-                                  );
-                                },
+                          onPressed: null,
                           child: Text(actionLabel),
                         ),
                       ),
@@ -511,15 +485,7 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
                           ),
                           const SizedBox(width: 8),
                           OutlinedButton(
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                              Future.microtask(() async {
-                                if (!mounted) {
-                                  return;
-                                }
-                                await _showAuthModal(isSignIn: !isSignIn);
-                              });
-                            },
+                            onPressed: null,
                             child: Text(switchAction),
                           ),
                         ],
@@ -771,62 +737,98 @@ class _LeaderboardCardState extends State<_LeaderboardCard> {
       decoration: BoxDecoration(
         border: Border.all(color: theme.colorScheme.onSurface.withOpacity(0.22)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'leaderboard',
-            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _LeaderboardTabButton(
-                  label: 'Friends',
-                  selected: _selectedTab == _LeaderboardTab.friends,
-                  enabled: _friendsEnabled,
-                  onPressed: _friendsEnabled
-                      ? () {
-                          setState(() {
-                            _selectedTab = _LeaderboardTab.friends;
-                          });
-                        }
-                      : null,
-                ),
+      child: const _LeaderboardCardContents(),
+    );
+  }
+}
+
+class _TemporarilyBlurredLeaderboard extends StatelessWidget {
+  const _TemporarilyBlurredLeaderboard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ImageFiltered(
+      // Temporary presentation treatment for unreleased leaderboard data.
+      imageFilter: ui.ImageFilter.blur(sigmaX: 3.5, sigmaY: 3.5),
+      child: child,
+    );
+  }
+}
+
+class _LeaderboardCardContents extends StatelessWidget {
+  const _LeaderboardCardContents();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.findAncestorStateOfType<_LeaderboardCardState>()!;
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'coming soon - leaderboard',
+          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 12),
+        const _TemporarilyBlurredLeaderboard(
+          child: _LeaderboardBlurredBody(),
+        ),
+      ],
+    );
+  }
+}
+
+class _LeaderboardBlurredBody extends StatelessWidget {
+  const _LeaderboardBlurredBody();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.findAncestorStateOfType<_LeaderboardCardState>()!;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _LeaderboardTabButton(
+                label: 'Friends',
+                selected: state._selectedTab == _LeaderboardTab.friends,
+                enabled: state._friendsEnabled,
+                onPressed: null,
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _LeaderboardTabButton(
-                  label: 'Global',
-                  selected: _selectedTab == _LeaderboardTab.global,
-                  enabled: true,
-                  onPressed: () {
-                    setState(() {
-                      _selectedTab = _LeaderboardTab.global;
-                    });
-                  },
-                ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _LeaderboardTabButton(
+                label: 'Global',
+                selected: state._selectedTab == _LeaderboardTab.global,
+                enabled: true,
+                onPressed: null,
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 160),
-            child: _selectedTab == _LeaderboardTab.friends
-                ? _FriendsLeaderboardView(
-                    key: const ValueKey('friends'),
-                    user: widget.user,
-                    hasFriends: _hasFriends,
-                  )
-                : _GlobalLeaderboardView(
-                    key: const ValueKey('global'),
-                    user: widget.user,
-                  ),
-          ),
-        ],
-      ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 160),
+          child: state._selectedTab == _LeaderboardTab.friends
+              ? _FriendsLeaderboardView(
+                  key: const ValueKey('friends'),
+                  user: state.widget.user,
+                  hasFriends: state._hasFriends,
+                )
+              : _GlobalLeaderboardView(
+                  key: const ValueKey('global'),
+                  user: state.widget.user,
+                ),
+        ),
+      ],
     );
   }
 }
