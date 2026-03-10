@@ -33,6 +33,35 @@
 
   <title>planarity</title>
   <link rel="manifest" href="manifest.json">
+  <script>
+    (function () {
+      if (!('serviceWorker' in navigator)) {
+        return;
+      }
+
+      window.__pwaCleanup = (async function () {
+        try {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(
+            registrations.map(async function (registration) {
+              try {
+                await registration.unregister();
+              } catch (_) {}
+            })
+          );
+
+          if ('caches' in window) {
+            const cacheNames = await caches.keys();
+            await Promise.all(
+              cacheNames.map(function (cacheName) {
+                return caches.delete(cacheName);
+              })
+            );
+          }
+        } catch (_) {}
+      })();
+    })();
+  </script>
 </head>
 <body>
   <!--
@@ -43,6 +72,16 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script src="flutter_bootstrap.js" async></script>
+  <script>
+    window.addEventListener('load', async function () {
+      if (window.__pwaCleanup) {
+        await window.__pwaCleanup;
+      }
+      const scriptTag = document.createElement('script');
+      scriptTag.src = 'flutter_bootstrap.js';
+      scriptTag.async = true;
+      document.body.appendChild(scriptTag);
+    });
+  </script>
 </body>
 </html>
