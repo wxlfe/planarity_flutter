@@ -137,6 +137,7 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
   String? _lockedDay;
   StreamSubscription<User?>? _authSubscription;
   String? _activeUserId;
+  User? _currentUser;
 
   @override
   void initState() {
@@ -228,6 +229,7 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
         return;
       }
       setState(() {
+        _currentUser = null;
         _status = DailyPlayStatus.ready;
         _currentLevel = _startingLevel;
         _score = 0;
@@ -250,6 +252,7 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
     }
 
     setState(() {
+      _currentUser = user;
       _status = playedToday
           ? (isLocked ? DailyPlayStatus.locked : DailyPlayStatus.inProgress)
           : DailyPlayStatus.ready;
@@ -537,287 +540,74 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
   }
 
   Future<void> _showAuthModal({required bool isSignIn}) async {
-    final emailController = TextEditingController();
-    final passwordController = TextEditingController();
-    String? errorText;
-    bool isSubmitting = false;
+    var nextMode = isSignIn;
 
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        final theme = Theme.of(context);
-        final actionLabel = isSignIn ? 'sign in' : 'sign up';
-        final subtitle =
-            isSignIn ? 'sign in with your email and password.' : 'create an account with your email and password.';
-        final switchPrompt = isSignIn ? 'new here?' : 'already signed up?';
-        final switchAction = isSignIn ? 'sign up' : 'sign in';
+    while (mounted) {
+      final result = await showDialog<_AuthDialogResult>(
+        context: context,
+        builder: (dialogContext) {
+          return _AuthDialog(
+            isSignIn: nextMode,
+            onSubmit: _submitAuth,
+          );
+        },
+      );
 
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return Dialog(
-              backgroundColor: theme.colorScheme.surface,
-              surfaceTintColor: Colors.transparent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.zero,
-                side: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.35)),
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 460),
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        actionLabel,
-                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        subtitle,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurface.withOpacity(0.72),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      TextField(
-                        controller: emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: const InputDecoration(
-                          labelText: 'email',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.zero),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: passwordController,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText: 'password',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.zero),
-                        ),
-                        onSubmitted: isSubmitting
-                            ? null
-                            : (_) async {
-                                setDialogState(() {
-                                  isSubmitting = true;
-                                  errorText = null;
-                                });
+      if (!mounted || result == null) {
+        return;
+      }
 
-                                final submitError = await _submitAuth(
-                                  isSignIn: isSignIn,
-                                  email: emailController.text,
-                                  password: passwordController.text,
-                                );
+      if (result.nextIsSignIn != null) {
+        nextMode = result.nextIsSignIn!;
+        continue;
+      }
 
-                                if (!mounted || !context.mounted) {
-                                  return;
-                                }
-
-                                if (submitError == null) {
-                                  Navigator.of(context).pop();
-                                  if (!isSignIn) {
-                                    final signedInUser = FirebaseAuth.instance.currentUser;
-                                    if (signedInUser != null && mounted) {
-                                      await _showProfileModal(user: signedInUser);
-                                    }
-                                  }
-                                  return;
-                                }
-
-                                setDialogState(() {
-                                  isSubmitting = false;
-                                  errorText = submitError;
-                                });
-                              },
-                      ),
-                      if (errorText != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          errorText!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withOpacity(0.75),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 14),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                          onPressed: isSubmitting
-                              ? null
-                              : () async {
-                                  setDialogState(() {
-                                    isSubmitting = true;
-                                    errorText = null;
-                                  });
-
-                                  final submitError = await _submitAuth(
-                                    isSignIn: isSignIn,
-                                    email: emailController.text,
-                                    password: passwordController.text,
-                                  );
-
-                                  if (!mounted || !context.mounted) {
-                                    return;
-                                  }
-
-                                  if (submitError == null) {
-                                    Navigator.of(context).pop();
-                                    if (!isSignIn) {
-                                      final signedInUser = FirebaseAuth.instance.currentUser;
-                                      if (signedInUser != null && mounted) {
-                                        await _showProfileModal(user: signedInUser);
-                                      }
-                                    }
-                                    return;
-                                  }
-
-                                  setDialogState(() {
-                                    isSubmitting = false;
-                                    errorText = submitError;
-                                  });
-                                },
-                          child: isSubmitting
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : Text(actionLabel),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Divider(height: 1, color: theme.colorScheme.onSurface.withOpacity(0.25)),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Text(
-                            switchPrompt,
-                            style: theme.textTheme.bodyMedium,
-                          ),
-                          const SizedBox(width: 8),
-                          OutlinedButton(
-                            onPressed: isSubmitting
-                                ? null
-                                : () {
-                                    Navigator.of(context).pop();
-                                    _showAuthModal(isSignIn: !isSignIn);
-                                  },
-                            child: Text(switchAction),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-    emailController.dispose();
-    passwordController.dispose();
+      if (result.userToEdit != null) {
+        await _showProfileModal(user: result.userToEdit!);
+      }
+      return;
+    }
   }
 
   Future<void> _showProfileModal({required User user}) async {
-    final theme = Theme.of(context);
     final profileData = await _loadUserDocument(user.uid);
+    if (!mounted) {
+      return;
+    }
     final initialDisplayName = _profileDisplayName(profileData, user);
     final lifetimeScore = _profileLifetimeScore(profileData);
-    final displayNameController = TextEditingController(text: initialDisplayName);
-    var shouldPersist = true;
-
-    await showDialog<void>(
+    final result = await showDialog<_ProfileDialogResult>(
       context: context,
       builder: (dialogContext) {
-        return Dialog(
-          backgroundColor: theme.colorScheme.surface,
-          surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.zero,
-            side: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.35)),
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'profile',
-                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'update how your name appears in your profile.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.72),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: displayNameController,
-                    textInputAction: TextInputAction.done,
-                    decoration: const InputDecoration(
-                      labelText: 'display name',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.zero),
-                    ),
-                    onSubmitted: (_) => Navigator.of(dialogContext).pop(),
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    'lifetime score',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.7),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$lifetimeScore',
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: () async {
-                        shouldPersist = false;
-                        await _saveDisplayName(
-                          user: user,
-                          displayName: displayNameController.text,
-                        );
-                        if (!mounted || !dialogContext.mounted) {
-                          return;
-                        }
-                        await FirebaseAuth.instance.signOut();
-                        if (!mounted || !dialogContext.mounted) {
-                          return;
-                        }
-                        Navigator.of(dialogContext).pop();
-                      },
-                      child: const Text('sign out'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        return _ProfileDialog(
+          initialDisplayName: initialDisplayName,
+          lifetimeScore: lifetimeScore,
         );
       },
     );
 
-    if (shouldPersist) {
+    if (result == null || !mounted) {
+      return;
+    }
+
+    if (result.signOutRequested) {
       await _saveDisplayName(
         user: user,
-        displayName: displayNameController.text,
+        displayName: result.displayName,
+      );
+      if (!mounted) {
+        return;
+      }
+      await FirebaseAuth.instance.signOut();
+      return;
+    }
+
+    if (result.shouldPersist) {
+      await _saveDisplayName(
+        user: user,
+        displayName: result.displayName,
       );
     }
-    displayNameController.dispose();
   }
 
   Future<Map<String, dynamic>?> _loadUserDocument(String uid) async {
@@ -971,16 +761,7 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_firebaseReady) {
-      return StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          return _buildHomeScaffold(context, snapshot.data);
-        },
-      );
-    }
-
-    return _buildHomeScaffold(context, null);
+    return _buildHomeScaffold(context, _currentUser);
   }
 
   Widget _buildHomeScaffold(BuildContext context, User? user) {
@@ -1198,6 +979,316 @@ class _HomeHeroContent extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _AuthDialogResult {
+  const _AuthDialogResult({
+    this.nextIsSignIn,
+    this.userToEdit,
+  });
+
+  final bool? nextIsSignIn;
+  final User? userToEdit;
+}
+
+class _ProfileDialogResult {
+  const _ProfileDialogResult({
+    required this.displayName,
+    required this.shouldPersist,
+    required this.signOutRequested,
+  });
+
+  final String displayName;
+  final bool shouldPersist;
+  final bool signOutRequested;
+}
+
+class _AuthDialog extends StatefulWidget {
+  const _AuthDialog({
+    required this.isSignIn,
+    required this.onSubmit,
+  });
+
+  final bool isSignIn;
+  final Future<String?> Function({
+    required bool isSignIn,
+    required String email,
+    required String password,
+  }) onSubmit;
+
+  @override
+  State<_AuthDialog> createState() => _AuthDialogState();
+}
+
+class _AuthDialogState extends State<_AuthDialog> {
+  late final TextEditingController _emailController;
+  late final TextEditingController _passwordController;
+  String? _errorText;
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController();
+    _passwordController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    setState(() {
+      _isSubmitting = true;
+      _errorText = null;
+    });
+
+    final submitError = await widget.onSubmit(
+      isSignIn: widget.isSignIn,
+      email: _emailController.text,
+      password: _passwordController.text,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (submitError == null) {
+      Navigator.of(context).pop(
+        _AuthDialogResult(
+          userToEdit: widget.isSignIn ? null : FirebaseAuth.instance.currentUser,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = false;
+      _errorText = submitError;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final actionLabel = widget.isSignIn ? 'sign in' : 'sign up';
+    final subtitle = widget.isSignIn
+        ? 'sign in with your email and password.'
+        : 'create an account with your email and password.';
+    final switchPrompt = widget.isSignIn ? 'new here?' : 'already signed up?';
+    final switchAction = widget.isSignIn ? 'sign up' : 'sign in';
+
+    return Dialog(
+      backgroundColor: theme.colorScheme.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
+        side: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.35)),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                actionLabel,
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.72),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'email',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.zero),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'password',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.zero),
+                ),
+                onSubmitted: _isSubmitting ? null : (_) async => _submit(),
+              ),
+              if (_errorText != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _errorText!,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.75),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _isSubmitting ? null : _submit,
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(actionLabel),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Divider(height: 1, color: theme.colorScheme.onSurface.withOpacity(0.25)),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Text(
+                    switchPrompt,
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: _isSubmitting
+                        ? null
+                        : () {
+                            Navigator.of(context).pop(
+                              _AuthDialogResult(nextIsSignIn: !widget.isSignIn),
+                            );
+                          },
+                    child: Text(switchAction),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileDialog extends StatefulWidget {
+  const _ProfileDialog({
+    required this.initialDisplayName,
+    required this.lifetimeScore,
+  });
+
+  final String initialDisplayName;
+  final int lifetimeScore;
+
+  @override
+  State<_ProfileDialog> createState() => _ProfileDialogState();
+}
+
+class _ProfileDialogState extends State<_ProfileDialog> {
+  late final TextEditingController _displayNameController;
+
+  @override
+  void initState() {
+    super.initState();
+    _displayNameController = TextEditingController(text: widget.initialDisplayName);
+  }
+
+  @override
+  void dispose() {
+    _displayNameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Dialog(
+      backgroundColor: theme.colorScheme.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
+        side: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.35)),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'profile',
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'update how your name appears in your profile.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.72),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _displayNameController,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: 'display name',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.zero),
+                ),
+                onSubmitted: (_) {
+                  Navigator.of(context).pop(
+                    _ProfileDialogResult(
+                      displayName: _displayNameController.text,
+                      shouldPersist: true,
+                      signOutRequested: false,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'lifetime score',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${widget.lifetimeScore}',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(
+                      _ProfileDialogResult(
+                        displayName: _displayNameController.text,
+                        shouldPersist: false,
+                        signOutRequested: true,
+                      ),
+                    );
+                  },
+                  child: const Text('sign out'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
