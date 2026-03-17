@@ -31,7 +31,9 @@ Future<bool> _initializeFirebase() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     return true;
-  } catch (_) {
+  } catch (error, stackTrace) {
+    debugPrint('Firebase initialization failed: $error');
+    debugPrintStack(stackTrace: stackTrace);
     return false;
   }
 }
@@ -464,11 +466,21 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
         }
       }
       return null;
-    } on FirebaseAuthException catch (error) {
+    } on FirebaseAuthException catch (error, stackTrace) {
+      debugPrint(
+        'Firebase auth failed: code=${error.code}, message=${error.message}',
+      );
+      debugPrintStack(stackTrace: stackTrace);
       return _authErrorMessage(error);
-    } on FirebaseException catch (_) {
+    } on FirebaseException catch (error, stackTrace) {
+      debugPrint(
+        'Firebase auth config failed: code=${error.code}, message=${error.message}',
+      );
+      debugPrintStack(stackTrace: stackTrace);
       return 'auth configuration is missing';
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('Unexpected auth failure: $error');
+      debugPrintStack(stackTrace: stackTrace);
       return 'unable to authenticate right now';
     }
   }
@@ -498,6 +510,13 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
         return 'invalid email or password';
       case 'too-many-requests':
         return 'too many attempts. try again later';
+      case 'operation-not-allowed':
+        return 'email/password sign-in is not enabled';
+      case 'app-not-authorized':
+      case 'invalid-api-key':
+        return 'auth configuration is invalid for this app';
+      case 'keychain-error':
+        return 'macos keychain access is not configured';
       case 'network-request-failed':
         return 'network error. check your connection';
       default:
