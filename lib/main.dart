@@ -157,10 +157,12 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
   StreamSubscription<User?>? _authSubscription;
   String? _activeUserId;
   User? _currentUser;
+  Timer? _dailyResetTimer;
 
   @override
   void initState() {
     super.initState();
+    _scheduleDailyReset();
     _loadProgress();
     if (_firebaseReady) {
       _authSubscription = FirebaseAuth.instance.authStateChanges().listen(_handleAuthStateChange);
@@ -170,6 +172,7 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
 
   @override
   void dispose() {
+    _dailyResetTimer?.cancel();
     _authSubscription?.cancel();
     super.dispose();
   }
@@ -181,6 +184,42 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
     final month = now.month.toString().padLeft(2, '0');
     final day = now.day.toString().padLeft(2, '0');
     return '$year-$month-$day';
+  }
+
+  void _scheduleDailyReset() {
+    _dailyResetTimer?.cancel();
+    final now = DateTime.now().toUtc();
+    final nextMidnightUtc = DateTime.utc(now.year, now.month, now.day + 1);
+    _dailyResetTimer = Timer(nextMidnightUtc.difference(now), () async {
+      await _resetForNewDay();
+      if (mounted) {
+        _scheduleDailyReset();
+      }
+    });
+  }
+
+  Future<void> _resetForNewDay() async {
+    final user = _currentUser;
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _status = DailyPlayStatus.ready;
+      _currentLevel = _startingLevel;
+      _score = 0;
+      _lockedDay = null;
+    });
+    await _saveProgress();
+
+    if (user != null) {
+      await _updateUserProgressFields(
+        userId: user.uid,
+        score: 0,
+        currentLevel: _startingLevel,
+        locked: false,
+      );
+    }
   }
 
   Future<void> _loadProgress() async {
@@ -259,12 +298,12 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
     }
 
     final profileData = await _loadUserDocument(user.uid);
-    final syncedScore = _profileScore(profileData);
-    final syncedLevel = _profileCurrentLevel(profileData);
     final lastPlayed = _profileLastPlayed(profileData);
+    final playedToday = lastPlayed == _todayKey();
+    final syncedScore = _profileScore(profileData, playedToday: playedToday);
+    final syncedLevel = _profileCurrentLevel(profileData, playedToday: playedToday);
     final isLocked = _profileLocked(profileData);
     final today = _todayKey();
-    final playedToday = lastPlayed == today;
 
     if (!mounted) {
       return;
@@ -281,9 +320,11 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
     });
     await _saveProgress();
 
-    if (!playedToday && isLocked) {
+    if (!playedToday && (isLocked || syncedScore != 0 || syncedLevel != _startingLevel)) {
       await _updateUserProgressFields(
         userId: user.uid,
+        score: 0,
+        currentLevel: _startingLevel,
         locked: false,
       );
     }
@@ -762,7 +803,10 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
     return 0;
   }
 
-  int _profileScore(Map<String, dynamic>? profileData) {
+  int _profileScore(Map<String, dynamic>? profileData, {required bool playedToday}) {
+    if (!playedToday) {
+      return 0;
+    }
     final score = profileData?['score'];
     if (score is int) {
       return max(0, score);
@@ -773,7 +817,10 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
     return 0;
   }
 
-  int _profileCurrentLevel(Map<String, dynamic>? profileData) {
+  int _profileCurrentLevel(Map<String, dynamic>? profileData, {required bool playedToday}) {
+    if (!playedToday) {
+      return _startingLevel;
+    }
     final currentLevel = profileData?['currentLevel'];
     if (currentLevel is int) {
       return max(_startingLevel, currentLevel);
@@ -900,13 +947,9 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
       DailyPlayStatus.inProgress => 'continue',
       DailyPlayStatus.locked => 'locked',
     };
-    final scoreLabel = switch (_status) {
-      DailyPlayStatus.ready => null,
-      DailyPlayStatus.inProgress || DailyPlayStatus.locked => '$_score',
-    };
     final homeContent = _HomeHeroContent(
       buttonLabel: buttonLabel,
-      scoreLabel: scoreLabel,
+      scoreLabel: '$_score',
       isLocked: isLocked,
       onPlayPressed: _openChallenge,
       showLeaderboardBelowButton: !isWide,
@@ -1000,7 +1043,7 @@ class _HomeHeroContent extends StatelessWidget {
   });
 
   final String buttonLabel;
-  final String? scoreLabel;
+  final String scoreLabel;
   final bool isLocked;
   final VoidCallback onPlayPressed;
   final bool showLeaderboardBelowButton;
@@ -1033,18 +1076,21 @@ class _HomeHeroContent extends StatelessWidget {
                 fontWeight: FontWeight.w400,
               ),
         ),
-        if (scoreLabel != null) ...[
-          const SizedBox(height: 21),
-          Text(
-            scoreLabel!,
-            style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w500,
-                ),
-          ),
-          const SizedBox(height: 21),
-        ] else ...[
-          const SizedBox(height: 42),
-        ],
+        const SizedBox(height: 21),
+        Text(
+          'daily score',
+          style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.7),
+              ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          scoreLabel,
+          style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+        ),
+        const SizedBox(height: 21),
         OutlinedButton(
           onPressed: isLocked ? null : onPlayPressed,
           style: ButtonStyle(
