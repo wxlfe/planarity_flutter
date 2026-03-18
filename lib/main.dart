@@ -537,6 +537,12 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
       );
       debugPrintStack(stackTrace: stackTrace);
       return _AuthSubmissionResult(errorText: _googleAuthErrorMessage(error));
+    } on PlatformException catch (error, stackTrace) {
+      debugPrint(
+        'Google platform auth failed: code=${error.code}, message=${error.message}',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      return _AuthSubmissionResult(errorText: _googlePlatformAuthErrorMessage(error));
     } on FirebaseAuthException catch (error, stackTrace) {
       debugPrint(
         'Firebase Google auth failed: code=${error.code}, message=${error.message}',
@@ -626,6 +632,17 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
         }
         return 'unable to authenticate right now';
     }
+  }
+
+  String _googlePlatformAuthErrorMessage(PlatformException error) {
+    final message = error.message;
+    if (message != null && message.contains('missing support for the following URL schemes')) {
+      return 'google sign-in is not configured for this iOS app';
+    }
+    if (message != null && message.isNotEmpty) {
+      return message;
+    }
+    return 'unable to authenticate right now';
   }
 
   String _firestoreErrorMessage(FirebaseException error) {
