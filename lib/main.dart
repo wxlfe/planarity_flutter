@@ -6,9 +6,11 @@ import 'dart:ui' as ui;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -16,12 +18,14 @@ import 'package:url_launcher/url_launcher.dart';
 import 'firebase_options.dart';
 
 bool _firebaseReady = false;
+bool _googleSignInReady = false;
 
 const _dummyFriendsUri = 'https://example.com/friends';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _firebaseReady = await _initializeFirebase();
+  _googleSignInReady = await _initializeGoogleSignIn();
   runApp(const PlanarityApp());
 }
 
@@ -33,6 +37,21 @@ Future<bool> _initializeFirebase() async {
     return true;
   } catch (error, stackTrace) {
     debugPrint('Firebase initialization failed: $error');
+    debugPrintStack(stackTrace: stackTrace);
+    return false;
+  }
+}
+
+Future<bool> _initializeGoogleSignIn() async {
+  if (kIsWeb) {
+    return true;
+  }
+
+  try {
+    await GoogleSignIn.instance.initialize();
+    return true;
+  } catch (error, stackTrace) {
+    debugPrint('Google Sign-In initialization failed: $error');
     debugPrintStack(stackTrace: stackTrace);
     return false;
   }
@@ -459,7 +478,7 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
         }
 
         try {
-          await _createUserDocument(user);
+          await _ensureUserDocument(user);
         } on FirebaseException catch (error) {
           await user.delete().catchError((_) {});
           return _firestoreErrorMessage(error);
@@ -488,15 +507,89 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
     }
   }
 
-  Future<void> _createUserDocument(User user) {
+  Future<_AuthSubmissionResult> _submitGoogleAuth() async {
+    if (!_firebaseReady) {
+      return const _AuthSubmissionResult(errorText: 'auth configuration is missing');
+    }
+    if (!kIsWeb && (!_googleSignInReady || !GoogleSignIn.instance.supportsAuthenticate())) {
+      return const _AuthSubmissionResult(
+        errorText: 'google sign-in is not available on this platform',
+      );
+    }
+
+    try {
+      final credential = await _signInWithGoogle();
+      final user = credential.user;
+      if (user == null) {
+        return const _AuthSubmissionResult(errorText: 'unable to authenticate right now');
+      }
+
+      if (credential.additionalUserInfo?.isNewUser ?? false) {
+        await _ensureUserDocument(user);
+      }
+
+      return _AuthSubmissionResult(
+        userToEdit: credential.additionalUserInfo?.isNewUser ?? false ? user : null,
+      );
+    } on GoogleSignInException catch (error, stackTrace) {
+      debugPrint(
+        'Google sign-in failed: code=${error.code.name}, description=${error.description}',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      return _AuthSubmissionResult(errorText: _googleAuthErrorMessage(error));
+    } on PlatformException catch (error, stackTrace) {
+      debugPrint(
+        'Google platform auth failed: code=${error.code}, message=${error.message}',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      return _AuthSubmissionResult(errorText: _googlePlatformAuthErrorMessage(error));
+    } on FirebaseAuthException catch (error, stackTrace) {
+      debugPrint(
+        'Firebase Google auth failed: code=${error.code}, message=${error.message}',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      return _AuthSubmissionResult(errorText: _authErrorMessage(error));
+    } on FirebaseException catch (error, stackTrace) {
+      debugPrint(
+        'Google auth config failed: code=${error.code}, message=${error.message}',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      return _AuthSubmissionResult(errorText: _firestoreErrorMessage(error));
+    } catch (error, stackTrace) {
+      debugPrint('Unexpected Google auth failure: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return const _AuthSubmissionResult(errorText: 'unable to authenticate right now');
+    }
+  }
+
+  Future<UserCredential> _signInWithGoogle() async {
+    if (kIsWeb) {
+      return FirebaseAuth.instance.signInWithPopup(GoogleAuthProvider());
+    }
+
+    final googleUser = await GoogleSignIn.instance.authenticate();
+    final googleAuth = googleUser.authentication;
+    final credential = GoogleAuthProvider.credential(idToken: googleAuth.idToken);
+    return FirebaseAuth.instance.signInWithCredential(credential);
+  }
+
+  Future<void> _ensureUserDocument(User user) async {
     return FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-      'displayName': 'anonymous player',
+      'displayName': _defaultDisplayName(user),
       'currentLevel': _startingLevel,
       'lastPlayed': _todayKey(),
       'locked': false,
       'lifetimeScore': 0,
       'score': 0,
-    });
+    }, SetOptions(merge: true));
+  }
+
+  String _defaultDisplayName(User user) {
+    final authDisplayName = user.displayName?.trim();
+    if (authDisplayName != null && authDisplayName.isNotEmpty) {
+      return authDisplayName;
+    }
+    return 'anonymous player';
   }
 
   String _authErrorMessage(FirebaseAuthException error) {
@@ -527,6 +620,31 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
     }
   }
 
+  String? _googleAuthErrorMessage(GoogleSignInException error) {
+    switch (error.code) {
+      case GoogleSignInExceptionCode.canceled:
+        return '';
+      case GoogleSignInExceptionCode.clientConfigurationError:
+        return 'google sign-in is not configured for this app';
+      default:
+        if (error.description != null && error.description!.isNotEmpty) {
+          return error.description;
+        }
+        return 'unable to authenticate right now';
+    }
+  }
+
+  String _googlePlatformAuthErrorMessage(PlatformException error) {
+    final message = error.message;
+    if (message != null && message.contains('missing support for the following URL schemes')) {
+      return 'google sign-in is not configured for this iOS app';
+    }
+    if (message != null && message.isNotEmpty) {
+      return message;
+    }
+    return 'unable to authenticate right now';
+  }
+
   String _firestoreErrorMessage(FirebaseException error) {
     switch (error.code) {
       case 'permission-denied':
@@ -549,6 +667,7 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
           return _AuthDialog(
             isSignIn: nextMode,
             onSubmit: _submitAuth,
+            onGoogleSubmit: _submitGoogleAuth,
           );
         },
       );
@@ -597,6 +716,9 @@ class _PlanarityHomePageState extends State<PlanarityHomePage> {
       );
       if (!mounted) {
         return;
+      }
+      if (!kIsWeb && _googleSignInReady && GoogleSignIn.instance.supportsAuthenticate()) {
+        await GoogleSignIn.instance.signOut().catchError((_) {});
       }
       await FirebaseAuth.instance.signOut();
       return;
@@ -993,6 +1115,16 @@ class _AuthDialogResult {
   final User? userToEdit;
 }
 
+class _AuthSubmissionResult {
+  const _AuthSubmissionResult({
+    this.errorText,
+    this.userToEdit,
+  });
+
+  final String? errorText;
+  final User? userToEdit;
+}
+
 class _ProfileDialogResult {
   const _ProfileDialogResult({
     required this.displayName,
@@ -1009,6 +1141,7 @@ class _AuthDialog extends StatefulWidget {
   const _AuthDialog({
     required this.isSignIn,
     required this.onSubmit,
+    required this.onGoogleSubmit,
   });
 
   final bool isSignIn;
@@ -1017,6 +1150,7 @@ class _AuthDialog extends StatefulWidget {
     required String email,
     required String password,
   }) onSubmit;
+  final Future<_AuthSubmissionResult> Function() onGoogleSubmit;
 
   @override
   State<_AuthDialog> createState() => _AuthDialogState();
@@ -1070,6 +1204,31 @@ class _AuthDialogState extends State<_AuthDialog> {
     setState(() {
       _isSubmitting = false;
       _errorText = submitError;
+    });
+  }
+
+  Future<void> _submitGoogle() async {
+    setState(() {
+      _isSubmitting = true;
+      _errorText = null;
+    });
+
+    final result = await widget.onGoogleSubmit();
+
+    if (!mounted) {
+      return;
+    }
+
+    if (result.errorText == null) {
+      Navigator.of(context).pop(
+        _AuthDialogResult(userToEdit: result.userToEdit),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = false;
+      _errorText = result.errorText!.isEmpty ? null : result.errorText;
     });
   }
 
@@ -1149,6 +1308,17 @@ class _AuthDialogState extends State<_AuthDialog> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : Text(actionLabel),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Divider(height: 1, color: theme.colorScheme.onSurface.withOpacity(0.25)),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.center,
+                child: IconButton.outlined(
+                  onPressed: _isSubmitting ? null : _submitGoogle,
+                  tooltip: 'continue with Google',
+                  icon: const FaIcon(FontAwesomeIcons.google, size: 18),
                 ),
               ),
               const SizedBox(height: 12),
